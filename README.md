@@ -48,9 +48,8 @@ python3 -m http.server 8000
 # poi apri http://localhost:8000
 ```
 
-Per usarla sul telefono, il modo più semplice è pubblicarla con **GitHub Pages**
-(Settings → Pages → Deploy from branch) e aprire il link da Chrome/Safari,
-poi "Aggiungi a schermata Home".
+Per usarla sul telefono restando **privata** la si pubblica su Cloudflare Pages protetta da
+Cloudflare Access (accesso solo con la propria email): vedi [Pubblicazione privata](#pubblicazione-privata).
 
 > La dettatura usa il riconoscimento vocale del browser: funziona su Chrome, Edge e Safari.
 > Su Firefox puoi comunque registrare l'audio o scrivere a mano.
@@ -68,6 +67,19 @@ poi "Aggiungi a schermata Home".
 | `js/voice.js` | Dettatura, registrazione audio, sintesi vocale |
 | `js/db.js` | Salvataggio locale (IndexedDB) |
 | `sw.js`, `manifest.webmanifest` | Installazione come app e funzionamento offline |
+
+## Pubblicazione privata
+
+L'app è un sito statico (nessuna compilazione). Su Cloudflare, piano gratuito:
+
+1. **Workers & Pages → Create → Pages → Connect to Git**: collega GitHub, scegli questo repository,
+   branch `ccr-8174b984-l0l4ne`, preset *None*, build command vuoto, output directory `/`.
+2. **Zero Trust → Access → Applications → Add an application → Self-hosted**: dominio
+   `<nome-progetto>.pages.dev`, policy *Allow* con la propria email, login con codice via email
+   (*One-time PIN*).
+
+Da quel momento l'app si apre solo dopo aver inserito il codice ricevuto via email, e ogni
+modifica pubblicata sul branch viene messa online in automatico.
 
 ## Collegare Claude
 

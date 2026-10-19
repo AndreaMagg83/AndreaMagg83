@@ -1,5 +1,5 @@
 // Service worker: rende l'app installabile e utilizzabile offline.
-const CACHE = 'agenda-vocale-v4';
+const CACHE = 'agenda-vocale-v5';
 const ASSETS = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg',
   'js/app.js', 'js/agent.js', 'js/claude.js', 'js/dateparser.js', 'js/db.js', 'js/voice.js', 'js/weather.js',
@@ -26,8 +26,12 @@ self.addEventListener('fetch', (e) => {
   e.respondWith(
     fetch(e.request)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        // Si salvano solo risposte valide: non i rimandi alla pagina di login
+        // quando l'accesso protetto è scaduto.
+        if (res.ok && !res.redirected) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy));
+        }
         return res;
       })
       .catch(() => caches.match(e.request)),
