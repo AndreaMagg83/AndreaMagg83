@@ -1,6 +1,6 @@
 import * as db from './db.js';
 import { parseWhen } from './dateparser.js';
-import { ask, formatWhen, toSpeech } from './agent.js';
+import { ask, dailyBriefing, formatWhen, toSpeech } from './agent.js';
 import { canRecord, canTranscribe, listen, speak } from './voice.js';
 import * as claude from './claude.js';
 
@@ -11,6 +11,10 @@ const state = { notes: [], filter: 'upcoming', draftAudio: null, session: null }
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
 const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+const settings = {
+  get(key) { try { return localStorage.getItem(`agenda-vocale:${key}`); } catch { return null; } },
+  set(key, value) { try { localStorage.setItem(`agenda-vocale:${key}`, value); } catch { /* non disponibile */ } },
+};
 
 function toLocalInput(date) {
   if (!date) return '';
@@ -393,6 +397,79 @@ $('#ask-mic').addEventListener('click', async () => {
   setTimeout(() => askSession?.stop(), 8000);
 });
 
+// ---------- Riepilogo della giornata ----------
+let briefingBusy = false;
+
+// Testo del riepilogo: da Claude se collegato, altrimenti dall'assistente base.
+async function generateBriefing() {
+  if (claude.isEnabled()) {
+    try {
+      return await claude.askClaude(claude.BRIEFING_PROMPT, () => state.notes, claudeActions);
+    } catch (err) {
+      console.error(err);
+      return `${await claude.describeError(err)}\n\n${dailyBriefing(state.notes)}`;
+    }
+  }
+  return dailyBriefing(state.notes);
+}
+
+async function showBriefing({ speakIt = false } = {}) {
+  if (briefingBusy) return;
+  briefingBusy = true;
+  showView('view-notes');
+  const card = $('#briefing');
+  const text = $('#briefing-text');
+  card.classList.remove('hidden');
+  text.classList.add('loading');
+  text.textContent = claude.isEnabled() ? 'Claude sta preparando il riepilogo…' : 'Preparo il riepilogo…';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  try {
+    const reply = await generateBriefing();
+    text.textContent = reply;
+    addMessage(`☀️ ${reply}`, 'bot');
+    if (speakIt) speak(toSpeech(reply));
+  } finally {
+    text.classList.remove('loading');
+    briefingBusy = false;
+  }
+}
+
+// Al primo avvio del giorno (dalle 5 in poi) il riepilogo compare da solo.
+function maybeAutoBriefing() {
+  const today = new Date().toDateString();
+  if (settings.get('briefing-auto') === '0' || settings.get('briefing-last') === today) return;
+  if (new Date().getHours() < 5) return;
+  settings.set('briefing-last', today);
+  showBriefing();
+}
+
+$('#briefing-btn').addEventListener('click', () => showBriefing({ speakIt: $('#speak-replies').checked }));
+$('#briefing-refresh').addEventListener('click', () => showBriefing());
+$('#briefing-listen').addEventListener('click', () => {
+  const text = $('#briefing-text').textContent;
+  if (text && !briefingBusy) speak(toSpeech(text));
+});
+$('#briefing-close').addEventListener('click', () => {
+  $('#briefing').classList.add('hidden');
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+});
+$('#briefing-auto').checked = settings.get('briefing-auto') !== '0';
+$('#briefing-auto').addEventListener('change', (e) => settings.set('briefing-auto', e.target.checked ? '1' : '0'));
+$('#briefing-chip').addEventListener('click', async () => {
+  if (briefingBusy) return;
+  briefingBusy = true;
+  addMessage('Riepilogo della giornata', 'user');
+  const typing = addMessage(claude.isEnabled() ? 'Claude sta pensando…' : 'Preparo il riepilogo…', 'bot typing');
+  try {
+    const reply = await generateBriefing();
+    typing.remove();
+    addMessage(reply, 'bot');
+    if ($('#speak-replies').checked) speak(toSpeech(reply));
+  } finally {
+    briefingBusy = false;
+  }
+});
+
 // ---------- Promemoria / notifiche ----------
 function checkReminders() {
   const now = new Date();
@@ -433,16 +510,19 @@ function updateNotifyButton() {
 }
 
 // ---------- Navigazione ----------
-document.querySelectorAll('.tab').forEach((tab) => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
-    document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === tab.dataset.view));
-  });
-});
+function showView(id) {
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === id));
+  document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === id));
+}
+document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => showView(tab.dataset.view)));
 
 // ---------- Avvio ----------
-async function init() {
+function updateTodayLabel() {
   $('#today').textContent = new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+async function init() {
+  updateTodayLabel();
   if (!canTranscribe) $('#rec-hint').innerHTML += '<br><small>⚠️ Dettatura non supportata: usa Chrome, Edge o Safari.</small>';
   updateNotifyButton();
   updateAgentMode();
@@ -454,7 +534,10 @@ async function init() {
 
   checkReminders();
   setInterval(checkReminders, 30000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkReminders(); renderNotes(); } });
+  maybeAutoBriefing();
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) { updateTodayLabel(); checkReminders(); renderNotes(); maybeAutoBriefing(); }
+  });
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(console.warn);
 }

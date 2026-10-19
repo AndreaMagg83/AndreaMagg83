@@ -26,6 +26,11 @@ Tutti i dati restano **sul tuo dispositivo** (IndexedDB), niente server, niente 
   ("sposta il dentista a giovedì", "ho già pagato la bolletta", "come organizzo domani?"),
   può creare, modificare, completare ed eliminare note e dare consigli sulla giornata.
   Senza chiave o senza rete torna automaticamente all'assistente base.
+- **Riepilogo della giornata** ☀️: al primo avvio di ogni giorno compare una scheda con
+  saluto, impegni di oggi, promemoria scaduti, anteprima di domani e note senza data.
+  Con 🔊 *Ascolta* te lo legge a voce; lo richiami quando vuoi con ☀️ in alto o dal chip
+  "Riepilogo" nell'assistente. Con Claude collegato aggiunge anche consigli sulle priorità,
+  e puoi continuare a fargli domande nella chat. Si disattiva togliendo "Mostra ogni mattina".
 - **Promemoria**: all'ora stabilita compare un avviso (e una notifica, se attivata con 🔔).
 
 ## Come provarla

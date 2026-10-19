@@ -131,3 +131,40 @@ function startOfToday(now) {
 function capitalize(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+// Riepilogo della giornata senza Claude: saluto, impegni di oggi, arretrati e anteprima di domani.
+export function dailyBriefing(notes, now = new Date()) {
+  const today = startOfToday(now);
+  const tomorrow = new Date(today.getTime() + 864e5);
+  const dayAfter = new Date(today.getTime() + 2 * 864e5);
+  const pending = notes
+    .filter((n) => !n.done)
+    .sort((a, b) => (a.due ? new Date(a.due) : Infinity) - (b.due ? new Date(b.due) : Infinity));
+  const due = (n) => new Date(n.due);
+  const todays = pending.filter((n) => n.due && due(n) >= today && due(n) < tomorrow);
+  const overdue = pending.filter((n) => n.due && due(n) < today);
+  const tomorrows = pending.filter((n) => n.due && due(n) >= tomorrow && due(n) < dayAfter);
+  const undated = pending.filter((n) => !n.due);
+
+  const h = now.getHours();
+  const greeting = h < 12 ? 'Buongiorno!' : h < 18 ? 'Buon pomeriggio!' : 'Buonasera!';
+  const dateLabel = now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+  const parts = [`${greeting} Oggi è ${dateLabel}.`];
+
+  if (todays.length) {
+    parts.push(listNotes(todays, `Oggi hai ${todays.length} promemoria:`));
+  } else {
+    parts.push('Oggi non hai impegni in agenda.');
+  }
+  if (overdue.length) {
+    parts.push(`Hai anche ${overdue.length} promemoria scadut${overdue.length === 1 ? 'o' : 'i'} da recuperare, ` +
+      `a partire da "${overdue[0].title}".`);
+  }
+  if (tomorrows.length) {
+    parts.push(`Domani ${tomorrows.length === 1 ? 'hai' : 'inizi con'} "${tomorrows[0].title}" ${formatWhen(tomorrows[0]).replace(/^domani\s*/, '')}`.trim() + '.');
+  }
+  if (undated.length) {
+    parts.push(`${undated.length === 1 ? "C'è 1 nota" : `Ci sono ${undated.length} note`} senza data, se trovi un momento libero.`);
+  }
+  return parts.join('\n');
+}

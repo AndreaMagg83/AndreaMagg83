@@ -1,5 +1,5 @@
 // Service worker: rende l'app installabile e utilizzabile offline.
-const CACHE = 'agenda-vocale-v2';
+const CACHE = 'agenda-vocale-v3';
 const ASSETS = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg',
   'js/app.js', 'js/agent.js', 'js/claude.js', 'js/dateparser.js', 'js/db.js', 'js/voice.js',

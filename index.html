@@ -17,12 +17,30 @@
       <h1>Agenda Vocale</h1>
       <p id="today" class="muted"></p>
     </div>
-    <button id="notify-btn" class="icon-btn" title="Attiva notifiche" aria-label="Attiva notifiche">🔔</button>
+    <div class="top-actions">
+      <button id="briefing-btn" class="icon-btn" title="Riepilogo della giornata" aria-label="Riepilogo della giornata">☀️</button>
+      <button id="notify-btn" class="icon-btn" title="Attiva notifiche" aria-label="Attiva notifiche">🔔</button>
+    </div>
   </header>
 
   <main>
     <!-- ===== NOTE ===== -->
     <section id="view-notes" class="view active" aria-label="Note">
+      <div id="briefing" class="card briefing hidden" aria-live="polite">
+        <div class="briefing-head">
+          <h2>☀️ La tua giornata</h2>
+          <button id="briefing-close" class="icon-btn small" aria-label="Chiudi riepilogo">✕</button>
+        </div>
+        <p id="briefing-text"></p>
+        <div class="row">
+          <label class="check small"><input id="briefing-auto" type="checkbox" checked> Mostra ogni mattina</label>
+          <div class="briefing-actions">
+            <button id="briefing-refresh" class="link small">↻ Aggiorna</button>
+            <button id="briefing-listen" class="btn primary small-btn">🔊 Ascolta</button>
+          </div>
+        </div>
+      </div>
+
       <div class="card composer">
         <button id="rec-btn" class="mic" aria-label="Registra una nota vocale">
           <span class="mic-icon">🎙️</span>
@@ -95,6 +113,7 @@
         <button class="chip" data-ask="Cosa ho questa settimana?">Settimana</button>
         <button class="chip" data-ask="Prossimi impegni">Prossimi impegni</button>
         <button class="chip" data-ask="Cosa ho scaduto?">Scaduti</button>
+        <button class="chip" id="briefing-chip">☀️ Riepilogo</button>
       </div>
       <form id="ask-form" class="ask-bar">
         <button type="button" id="ask-mic" class="icon-btn" aria-label="Chiedi a voce">🎙️</button>

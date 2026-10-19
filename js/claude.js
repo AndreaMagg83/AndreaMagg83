@@ -228,6 +228,11 @@ export async function askClaude(question, getNotes, actions) {
   return 'Ho eseguito diverse operazioni, controlla la lista delle note.';
 }
 
+export const BRIEFING_PROMPT = 'Fammi il riepilogo della mia giornata, come un assistente personale che mi parla ' +
+  'al mattino: un saluto, gli impegni di oggi in ordine di orario, eventuali promemoria scaduti da recuperare, ' +
+  'un\'anticipazione di domani e uno o due consigli pratici sulle priorità. Al massimo 8 frasi brevi, ' +
+  'senza modificare nessuna nota.';
+
 /** Verifica la chiave senza costi (legge solo le informazioni sul modello). */
 export async function testKey() {
   const anthropic = await getClient();
