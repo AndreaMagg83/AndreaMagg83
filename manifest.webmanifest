@@ -1,0 +1,14 @@
+{
+  "name": "Agenda Vocale",
+  "short_name": "Agenda",
+  "description": "Agenda personale con note vocali e un assistente che ti ricorda gli impegni.",
+  "lang": "it",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f7fb",
+  "theme_color": "#4f46e5",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

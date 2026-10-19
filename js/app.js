@@ -1,0 +1,379 @@
+import * as db from './db.js';
+import { parseWhen } from './dateparser.js';
+import { ask, formatWhen, toSpeech } from './agent.js';
+import { canRecord, canTranscribe, listen, speak } from './voice.js';
+
+const $ = (sel) => document.querySelector(sel);
+const state = { notes: [], filter: 'upcoming', draftAudio: null, session: null };
+
+// ---------- Utilità ----------
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
+const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+
+function toLocalInput(date) {
+  if (!date) return '';
+  const d = new Date(date);
+  const off = d.getTimezoneOffset() * 60000;
+  return new Date(d - off).toISOString().slice(0, 16);
+}
+
+function toast(msg, ms = 4000) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => el.classList.add('hidden'), ms);
+}
+
+// ---------- Note ----------
+async function loadNotes() {
+  state.notes = await db.getAllNotes();
+  renderNotes();
+}
+
+async function createNote({ text, title, due, hasTime, audio = null }) {
+  const note = {
+    id: uid(),
+    text: text.trim(),
+    title: (title || text).trim(),
+    due,
+    hasTime: Boolean(hasTime),
+    done: false,
+    notified: false,
+    hasAudio: Boolean(audio),
+    createdAt: new Date().toISOString(),
+  };
+  if (audio) await db.saveAudio(note.id, audio);
+  await db.saveNote(note);
+  state.notes.push(note);
+  renderNotes();
+  return note;
+}
+
+async function updateNote(note, changes) {
+  Object.assign(note, changes);
+  await db.saveNote(note);
+  renderNotes();
+}
+
+async function removeNote(note) {
+  await db.deleteNote(note.id);
+  if (note.hasAudio) await db.deleteAudio(note.id);
+  state.notes = state.notes.filter((n) => n.id !== note.id);
+  renderNotes();
+}
+
+function filteredNotes() {
+  const today = startOfToday();
+  const tomorrow = new Date(today.getTime() + 864e5);
+  const byDue = (a, b) => (a.due ? new Date(a.due) : Infinity) - (b.due ? new Date(b.due) : Infinity);
+  const list = state.notes.slice();
+  switch (state.filter) {
+    case 'today': return list.filter((n) => !n.done && n.due && new Date(n.due) >= today && new Date(n.due) < tomorrow).sort(byDue);
+    case 'undated': return list.filter((n) => !n.done && !n.due).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    case 'done': return list.filter((n) => n.done).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    case 'all': return list.sort(byDue);
+    default: return list.filter((n) => !n.done && n.due).sort(byDue);
+  }
+}
+
+function groupLabel(note) {
+  if (!note.due) return 'Senza data';
+  const d = new Date(note.due);
+  const today = startOfToday();
+  const days = Math.floor((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - today) / 864e5);
+  if (days < 0) return 'Scadute';
+  if (days === 0) return 'Oggi';
+  if (days === 1) return 'Domani';
+  if (days < 7) return 'Questa settimana';
+  return d.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' }).replace(/^./, (c) => c.toUpperCase());
+}
+
+function renderNotes() {
+  const list = $('#note-list');
+  const notes = filteredNotes();
+  if (!notes.length) {
+    const empty = {
+      upcoming: 'Nessun impegno in programma. Detta una nota per iniziare!',
+      today: 'Niente per oggi. 🎉',
+      undated: 'Nessuna nota senza data.',
+      done: 'Nessuna nota completata.',
+      all: 'Non hai ancora nessuna nota.',
+    }[state.filter];
+    list.innerHTML = `<p class="empty muted">${empty}</p>`;
+    return;
+  }
+
+  let html = '';
+  let lastGroup = null;
+  const now = new Date();
+  for (const n of notes) {
+    const group = state.filter === 'done' ? null : groupLabel(n);
+    if (group && group !== lastGroup) {
+      html += `<h2 class="group ${group === 'Scadute' ? 'overdue' : ''}">${group}</h2>`;
+      lastGroup = group;
+    }
+    const overdue = !n.done && n.due && new Date(n.due) < (n.hasTime ? now : startOfToday());
+    html += `
+      <article class="note ${n.done ? 'done' : ''} ${overdue ? 'overdue' : ''}" data-id="${n.id}">
+        <input type="checkbox" class="note-done" ${n.done ? 'checked' : ''} aria-label="Segna come fatta">
+        <div class="note-body">
+          <p class="note-title">${escapeHtml(n.title)}</p>
+          <p class="note-when muted small">${n.due ? '🕒 ' + formatWhen(n) : 'Senza data'}</p>
+          ${n.text && n.text !== n.title ? `<p class="note-text muted small">“${escapeHtml(n.text)}”</p>` : ''}
+        </div>
+        <div class="note-actions">
+          ${n.hasAudio ? '<button class="icon-btn small play" aria-label="Ascolta">▶️</button>' : ''}
+          <button class="icon-btn small edit-date" aria-label="Cambia data">📅</button>
+          <button class="icon-btn small delete" aria-label="Elimina">🗑️</button>
+        </div>
+      </article>`;
+  }
+  list.innerHTML = html;
+}
+
+$('#note-list').addEventListener('click', async (e) => {
+  const el = e.target.closest('.note');
+  if (!el) return;
+  const note = state.notes.find((n) => n.id === el.dataset.id);
+  if (!note) return;
+
+  if (e.target.classList.contains('note-done')) {
+    await updateNote(note, { done: e.target.checked });
+  } else if (e.target.closest('.play')) {
+    const blob = await db.getAudio(note.id);
+    if (blob) new Audio(URL.createObjectURL(blob)).play();
+  } else if (e.target.closest('.delete')) {
+    if (confirm(`Eliminare "${note.title}"?`)) await removeNote(note);
+  } else if (e.target.closest('.edit-date')) {
+    const value = prompt('Nuova data (es. "domani alle 15", "25/10 alle 9") — lascia vuoto per togliere la data:',
+      note.due ? formatWhen(note) : '');
+    if (value === null) return;
+    if (!value.trim()) return updateNote(note, { due: null, hasTime: false, notified: false });
+    const { date, hasTime } = parseWhen(value);
+    if (!date) return toast('Non ho capito la data, riprova.');
+    await updateNote(note, { due: date.toISOString(), hasTime, notified: false });
+  }
+});
+
+document.querySelectorAll('.filters .chip').forEach((chip) => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.filters .chip').forEach((c) => c.classList.toggle('active', c === chip));
+    state.filter = chip.dataset.filter;
+    renderNotes();
+  });
+});
+
+// ---------- Composizione nota vocale ----------
+function showDraft(text = '') {
+  $('#draft').classList.remove('hidden');
+  updateDraft(text);
+}
+
+function updateDraft(text) {
+  $('#draft-text').value = text;
+  const { date, hasTime } = parseWhen(text);
+  $('#draft-date').value = date ? toLocalInput(date) : '';
+  $('#draft-date').dataset.hasTime = hasTime ? '1' : '';
+}
+
+function resetDraft() {
+  $('#draft').classList.add('hidden');
+  $('#draft-text').value = '';
+  $('#draft-date').value = '';
+  $('#draft-audio').classList.add('hidden');
+  state.draftAudio = null;
+}
+
+async function toggleRecording() {
+  const btn = $('#rec-btn');
+  if (state.session) {
+    const audio = await state.session.stop();
+    state.session = null;
+    btn.classList.remove('recording');
+    $('#rec-hint').innerHTML = 'Controlla la nota e salvala.';
+    if (audio) {
+      state.draftAudio = audio;
+      $('#draft-audio').classList.remove('hidden');
+    }
+    if (!$('#draft-text').value && !audio) resetDraft();
+    return;
+  }
+
+  if (!canTranscribe && !canRecord) {
+    toast('Il tuo browser non supporta il microfono. Usa "Scrivi a mano".');
+    return;
+  }
+  resetDraft();
+  showDraft('');
+  btn.classList.add('recording');
+  $('#rec-hint').textContent = canTranscribe ? 'Ti ascolto… tocca di nuovo per fermare.' : 'Registro l\'audio… (trascrizione non supportata da questo browser)';
+  try {
+    state.session = await listen({
+      keepAudio: $('#keep-audio').checked,
+      onText: (text) => updateDraft(text),
+    });
+  } catch (err) {
+    btn.classList.remove('recording');
+    toast('Impossibile accedere al microfono.');
+    console.error(err);
+  }
+}
+
+$('#rec-btn').addEventListener('click', toggleRecording);
+$('#type-btn').addEventListener('click', () => { resetDraft(); showDraft(''); $('#draft-text').focus(); });
+$('#draft-text').addEventListener('input', (e) => {
+  // Aggiorna la data riconosciuta mentre si scrive, se l'utente non l'ha toccata a mano
+  if (!$('#draft-date').dataset.manual) {
+    const { date, hasTime } = parseWhen(e.target.value);
+    $('#draft-date').value = date ? toLocalInput(date) : '';
+    $('#draft-date').dataset.hasTime = hasTime ? '1' : '';
+  }
+});
+$('#draft-date').addEventListener('change', (e) => {
+  e.target.dataset.manual = '1';
+  e.target.dataset.hasTime = '1';
+});
+$('#draft-cancel').addEventListener('click', async () => {
+  if (state.session) { await state.session.stop(); state.session = null; $('#rec-btn').classList.remove('recording'); }
+  delete $('#draft-date').dataset.manual;
+  resetDraft();
+  $('#rec-hint').innerHTML = 'Tocca il microfono e detta la tua nota.';
+});
+$('#draft-save').addEventListener('click', async () => {
+  if (state.session) await toggleRecording();
+  const text = $('#draft-text').value.trim();
+  if (!text && !state.draftAudio) return toast('La nota è vuota.');
+  const dateValue = $('#draft-date').value;
+  const { rest } = parseWhen(text);
+  const note = await createNote({
+    text: text || 'Nota vocale',
+    title: rest || text || 'Nota vocale',
+    due: dateValue ? new Date(dateValue).toISOString() : null,
+    hasTime: Boolean(dateValue) && $('#draft-date').dataset.hasTime === '1',
+    audio: state.draftAudio,
+  });
+  delete $('#draft-date').dataset.manual;
+  resetDraft();
+  $('#rec-hint').innerHTML = 'Tocca il microfono e detta la tua nota.';
+  toast(note.due ? `Salvata: ti ricorderò ${formatWhen(note)}.` : 'Nota salvata.');
+});
+
+// ---------- Assistente ----------
+function addMessage(text, who) {
+  const chat = $('#chat');
+  const msg = document.createElement('div');
+  msg.className = `msg ${who}`;
+  msg.textContent = text;
+  chat.appendChild(msg);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function handleQuestion(question) {
+  if (!question.trim()) return;
+  addMessage(question, 'user');
+  const { reply, action } = ask(question, state.notes);
+  if (action?.type === 'create') await createNote(action.note);
+  addMessage(reply, 'bot');
+  if ($('#speak-replies').checked) speak(toSpeech(reply));
+}
+
+$('#ask-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = $('#ask-input');
+  handleQuestion(input.value);
+  input.value = '';
+});
+
+document.querySelectorAll('[data-ask]').forEach((chip) =>
+  chip.addEventListener('click', () => handleQuestion(chip.dataset.ask)));
+
+let askSession = null;
+$('#ask-mic').addEventListener('click', async () => {
+  const btn = $('#ask-mic');
+  if (askSession) { await askSession.stop(); return; }
+  if (!canTranscribe) return toast('Il riconoscimento vocale non è supportato da questo browser.');
+  let heard = '';
+  btn.classList.add('recording');
+  $('#ask-input').placeholder = 'Ti ascolto…';
+  askSession = await listen({
+    onText: (text) => { heard = text; $('#ask-input').value = text; },
+    onEnd: () => {
+      askSession = null;
+      btn.classList.remove('recording');
+      $('#ask-input').placeholder = "Chiedi all'assistente…";
+      $('#ask-input').value = '';
+      handleQuestion(heard);
+    },
+  });
+  // Per le domande basta una frase: fermati alla prima pausa
+  setTimeout(() => askSession?.stop(), 8000);
+});
+
+// ---------- Promemoria / notifiche ----------
+function checkReminders() {
+  const now = new Date();
+  for (const n of state.notes) {
+    if (n.done || n.notified || !n.due) continue;
+    const due = new Date(n.due);
+    // Le note senza orario vengono ricordate alle 9 del giorno stesso
+    const fireAt = n.hasTime ? due : new Date(due.getFullYear(), due.getMonth(), due.getDate(), 9);
+    if (fireAt <= now) {
+      notify(n);
+      updateNote(n, { notified: true });
+    }
+  }
+}
+
+async function notify(note) {
+  const body = note.hasTime ? `Alle ${new Date(note.due).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}` : 'Oggi';
+  toast(`⏰ ${note.title}`, 8000);
+  if ($('#speak-replies').checked) speak(`Promemoria: ${note.title}`);
+  if ('Notification' in window && Notification.permission === 'granted') {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg) reg.showNotification(`⏰ ${note.title}`, { body, icon: 'icons/icon.svg', tag: note.id });
+    else new Notification(`⏰ ${note.title}`, { body });
+  }
+}
+
+$('#notify-btn').addEventListener('click', async () => {
+  if (!('Notification' in window)) return toast('Le notifiche non sono supportate su questo browser.');
+  const perm = await Notification.requestPermission();
+  toast(perm === 'granted' ? 'Notifiche attivate! Tieni l\'app aperta per ricevere i promemoria.' : 'Notifiche non autorizzate.');
+  updateNotifyButton();
+});
+
+function updateNotifyButton() {
+  const on = 'Notification' in window && Notification.permission === 'granted';
+  $('#notify-btn').classList.toggle('active', on);
+  $('#notify-btn').title = on ? 'Notifiche attive' : 'Attiva notifiche';
+}
+
+// ---------- Navigazione ----------
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
+    document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === tab.dataset.view));
+  });
+});
+
+// ---------- Avvio ----------
+async function init() {
+  $('#today').textContent = new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+  if (!canTranscribe) $('#rec-hint').innerHTML += '<br><small>⚠️ Dettatura non supportata: usa Chrome, Edge o Safari.</small>';
+  updateNotifyButton();
+  await loadNotes();
+
+  const pending = state.notes.filter((n) => !n.done);
+  addMessage(`Ciao! Sono il tuo assistente. Hai ${pending.length} not${pending.length === 1 ? 'a' : 'e'} da ricordare. ` +
+    'Chiedimi "cosa devo fare oggi?" oppure "prossimi impegni".', 'bot');
+
+  checkReminders();
+  setInterval(checkReminders, 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkReminders(); renderNotes(); } });
+
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(console.warn);
+}
+
+init();
