@@ -498,8 +498,11 @@ function renderWeather() {
     $('#w-label').textContent = 'Meteo non disponibile al momento';
     $('#w-days').innerHTML = '';
     $('#w-advice').classList.add('hidden');
+    $('#w-updated').textContent = '';
     return;
   }
+  const updated = new Date(f.fetchedAt).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  $('#w-updated').textContent = ` · aggiornato alle ${updated}`;
   const now = meteo.describe(f.current.code, f.current.isDay);
   const today = meteo.forDay(f, new Date());
   $('#w-icon').textContent = now.icon;

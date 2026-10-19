@@ -107,6 +107,8 @@ main { max-width: 640px; margin: 0 auto; padding: 0 16px; }
 .w-day.today { background: var(--primary-soft); font-weight: 600; }
 .w-day .w-day-icon { font-size: 1.3rem; }
 .w-day .w-rain { color: var(--primary); font-size: 0.72rem; }
+.w-source { margin: 8px 0 0; font-size: 0.75rem; }
+.w-source a { color: inherit; }
 .note-weather {
   display: inline-block; white-space: nowrap; margin-left: 4px;
   padding: 0 7px; border-radius: 999px; background: var(--primary-soft); color: var(--text);
