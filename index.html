@@ -62,6 +62,32 @@
 
     <!-- ===== ASSISTENTE ===== -->
     <section id="view-agent" class="view" aria-label="Assistente">
+      <div class="agent-head">
+        <span id="agent-mode" class="badge">Assistente base</span>
+        <div>
+          <button id="new-chat" class="link small" title="Nuova conversazione">↺ Nuova</button>
+          <button id="settings-btn" class="icon-btn" aria-label="Impostazioni assistente" aria-expanded="false">⚙️</button>
+        </div>
+      </div>
+
+      <div id="settings" class="card settings hidden">
+        <h2>Collega Claude</h2>
+        <p class="muted small">Con Claude l'assistente capisce qualsiasi richiesta, può spostare, completare
+          o cancellare note e darti consigli sulla giornata. Serve una chiave API Anthropic:
+          creala su <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>.</p>
+        <label class="field">
+          <span>Chiave API</span>
+          <input id="api-key" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
+        </label>
+        <div class="row">
+          <button id="key-remove" class="btn ghost">Scollega</button>
+          <button id="key-save" class="btn primary">Salva e prova</button>
+        </div>
+        <p class="muted small">🔒 La chiave resta salvata solo su questo dispositivo e viene inviata
+          solo ad Anthropic. Ogni domanda ha un piccolo costo: imposta un limite di spesa nella console.
+          Le tue note vengono inviate a Claude per rispondere. Senza chiave o senza rete l'app usa l'assistente base.</p>
+      </div>
+
       <div id="chat" class="chat" aria-live="polite"></div>
       <div class="suggestions">
         <button class="chip" data-ask="Cosa devo fare oggi?">Oggi</button>

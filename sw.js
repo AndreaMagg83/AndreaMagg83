@@ -1,8 +1,8 @@
 // Service worker: rende l'app installabile e utilizzabile offline.
-const CACHE = 'agenda-vocale-v1';
+const CACHE = 'agenda-vocale-v2';
 const ASSETS = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg',
-  'js/app.js', 'js/agent.js', 'js/dateparser.js', 'js/db.js', 'js/voice.js',
+  'js/app.js', 'js/agent.js', 'js/claude.js', 'js/dateparser.js', 'js/db.js', 'js/voice.js',
 ];
 
 self.addEventListener('install', (e) => {
@@ -20,6 +20,9 @@ self.addEventListener('activate', (e) => {
 // Prima la rete (così gli aggiornamenti arrivano subito), poi la cache se offline.
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  // Le chiamate all'API di Claude non vanno mai messe in cache
+  const url = new URL(e.request.url);
+  if (url.origin !== self.location.origin && !['cdn.jsdelivr.net', 'esm.sh'].includes(url.hostname)) return;
   e.respondWith(
     fetch(e.request)
       .then((res) => {

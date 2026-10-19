@@ -2,6 +2,7 @@ import * as db from './db.js';
 import { parseWhen } from './dateparser.js';
 import { ask, formatWhen, toSpeech } from './agent.js';
 import { canRecord, canTranscribe, listen, speak } from './voice.js';
+import * as claude from './claude.js';
 
 const $ = (sel) => document.querySelector(sel);
 const state = { notes: [], filter: 'upcoming', draftAudio: null, session: null };
@@ -268,16 +269,97 @@ function addMessage(text, who) {
   msg.textContent = text;
   chat.appendChild(msg);
   chat.scrollTop = chat.scrollHeight;
+  return msg;
 }
+
+// Operazioni sulle note che Claude può eseguire tramite i suoi strumenti
+const claudeActions = {
+  create: (note) => createNote(note),
+  async update(id, changes) {
+    const note = state.notes.find((n) => n.id === id);
+    if (note) await updateNote(note, changes);
+    return note;
+  },
+  async remove(id) {
+    const note = state.notes.find((n) => n.id === id);
+    if (note) await removeNote(note);
+    return Boolean(note);
+  },
+};
 
 async function handleQuestion(question) {
   if (!question.trim()) return;
   addMessage(question, 'user');
-  const { reply, action } = ask(question, state.notes);
-  if (action?.type === 'create') await createNote(action.note);
+  let reply;
+
+  if (claude.isEnabled()) {
+    const typing = addMessage('Claude sta pensando…', 'bot typing');
+    try {
+      reply = await claude.askClaude(question, () => state.notes, claudeActions);
+      typing.remove();
+    } catch (err) {
+      console.error(err);
+      typing.remove();
+      addMessage(`${await claude.describeError(err)} Rispondo con l'assistente base.`, 'bot error');
+    }
+  }
+
+  if (!reply) {
+    const local = ask(question, state.notes);
+    if (local.action?.type === 'create') await createNote(local.action.note);
+    reply = local.reply;
+  }
   addMessage(reply, 'bot');
   if ($('#speak-replies').checked) speak(toSpeech(reply));
 }
+
+// ---------- Impostazioni Claude ----------
+function updateAgentMode() {
+  const on = claude.isEnabled();
+  $('#agent-mode').textContent = on ? '✨ Claude attivo' : 'Assistente base';
+  $('#agent-mode').classList.toggle('claude', on);
+  $('#api-key').value = on ? claude.getApiKey() : '';
+}
+
+$('#settings-btn').addEventListener('click', () => {
+  const open = $('#settings').classList.toggle('hidden') === false;
+  $('#settings-btn').setAttribute('aria-expanded', String(open));
+});
+
+$('#key-save').addEventListener('click', async () => {
+  const key = $('#api-key').value.trim();
+  if (!key) return toast('Inserisci la chiave API.');
+  const btn = $('#key-save');
+  btn.disabled = true;
+  btn.textContent = 'Verifico…';
+  claude.setApiKey(key);
+  try {
+    await claude.testKey();
+    toast('✨ Claude collegato!');
+    $('#settings').classList.add('hidden');
+    addMessage('Ora sono collegato a Claude: chiedimi pure quello che vuoi sulla tua agenda.', 'bot');
+  } catch (err) {
+    console.error(err);
+    claude.setApiKey('');
+    toast(await claude.describeError(err), 6000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Salva e prova';
+    updateAgentMode();
+  }
+});
+
+$('#key-remove').addEventListener('click', () => {
+  claude.setApiKey('');
+  updateAgentMode();
+  toast('Claude scollegato: uso l\'assistente base.');
+});
+
+$('#new-chat').addEventListener('click', () => {
+  claude.resetConversation();
+  $('#chat').innerHTML = '';
+  addMessage('Nuova conversazione. Come posso aiutarti?', 'bot');
+});
 
 $('#ask-form').addEventListener('submit', (e) => {
   e.preventDefault();
@@ -363,6 +445,7 @@ async function init() {
   $('#today').textContent = new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
   if (!canTranscribe) $('#rec-hint').innerHTML += '<br><small>⚠️ Dettatura non supportata: usa Chrome, Edge o Safari.</small>';
   updateNotifyButton();
+  updateAgentMode();
   await loadNotes();
 
   const pending = state.notes.filter((n) => !n.done);

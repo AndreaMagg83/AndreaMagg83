@@ -21,6 +21,11 @@ Tutti i dati restano **sul tuo dispositivo** (IndexedDB), niente server, niente 
   - "Cerca dentista" · "Quando ho la riunione?"
   - "Ricordami di pagare la bolletta dopodomani" → crea il promemoria
   - Le risposte vengono anche lette ad alta voce.
+- **Claude come assistente** (opzionale): dalle impostazioni ⚙️ della scheda Assistente
+  inserisci una chiave API Anthropic e l'assistente diventa Claude. Capisce richieste libere
+  ("sposta il dentista a giovedì", "ho già pagato la bolletta", "come organizzo domani?"),
+  può creare, modificare, completare ed eliminare note e dare consigli sulla giornata.
+  Senza chiave o senza rete torna automaticamente all'assistente base.
 - **Promemoria**: all'ora stabilita compare un avviso (e una notifica, se attivata con 🔔).
 
 ## Come provarla
@@ -45,17 +50,30 @@ poi "Aggiungi a schermata Home".
 |------|-------|
 | `index.html`, `styles.css` | Interfaccia |
 | `js/app.js` | Logica dell'app: note, registrazione, promemoria, navigazione |
-| `js/agent.js` | L'assistente: interpreta le domande e risponde |
+| `js/agent.js` | Assistente base (a regole, funziona offline) |
+| `js/claude.js` | Assistente Claude: chiamate all'API Anthropic e strumenti sulle note |
 | `js/dateparser.js` | Riconosce date e orari scritti in italiano |
 | `js/voice.js` | Dettatura, registrazione audio, sintesi vocale |
 | `js/db.js` | Salvataggio locale (IndexedDB) |
 | `sw.js`, `manifest.webmanifest` | Installazione come app e funzionamento offline |
 
+## Collegare Claude
+
+1. Crea una chiave su [console.anthropic.com](https://console.anthropic.com/settings/keys)
+   (serve un account con credito; conviene impostare un limite di spesa mensile).
+2. Nell'app: scheda **Assistente** → ⚙️ → incolla la chiave → **Salva e prova**.
+3. Il badge in alto diventa "✨ Claude attivo".
+
+Dettagli tecnici: modello `claude-opus-5-5` con effort `low` per risposte rapide, SDK ufficiale
+`@anthropic-ai/sdk` caricato da CDN, fallback automatico lato server in caso di rifiuto
+(`fallbacks: "default"`). La chiave è salvata nel `localStorage` del dispositivo e inviata solo
+ad `api.anthropic.com`: va bene per un'app personale, ma **non pubblicare l'app con la tua chiave
+dentro** e non usarla su dispositivi condivisi. Per condividere l'app con altri servirà un piccolo
+server che custodisca la chiave.
+
 ## Limiti attuali e idee per i prossimi passi
 
 - I promemoria scattano solo con l'app aperta (o in background recente): per notifiche
   sempre affidabili servirà un piccolo server con Web Push, oppure un'app nativa.
-- L'assistente è a regole: si può collegare a un modello AI (es. Claude) per capire
-  richieste più libere, riassumere la giornata, suggerire priorità.
 - Possibili aggiunte: promemoria ricorrenti, categorie/colori, anticipo dell'avviso
   ("avvisami 30 minuti prima"), sincronizzazione tra dispositivi, esportazione su Google Calendar.

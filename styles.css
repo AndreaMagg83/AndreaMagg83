@@ -155,6 +155,22 @@ textarea { resize: vertical; }
 .ask-bar .icon-btn { border-radius: 50%; }
 #view-agent > .check { display: flex; justify-content: center; }
 
+.agent-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; }
+.agent-head > div { display: flex; align-items: center; gap: 4px; }
+.badge { font-size: 0.8rem; padding: 4px 10px; border-radius: 999px; background: var(--border); color: var(--muted); }
+.badge.claude { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.settings { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+.settings h2 { margin: 0; font-size: 1.05rem; }
+.settings p { margin: 0; line-height: 1.45; }
+.settings a { color: var(--primary); }
+input[type="password"] {
+  width: 100%; font: inherit; color: var(--text);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 12px; padding: 10px 12px;
+}
+.msg.typing { color: var(--muted); font-style: italic; }
+.msg.error { border-color: var(--danger); background: var(--danger-soft); }
+
 /* ---- Tab bar ---- */
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
