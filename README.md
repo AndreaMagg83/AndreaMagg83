@@ -26,6 +26,12 @@ Tutti i dati restano **sul tuo dispositivo** (IndexedDB), niente server, niente 
   ("sposta il dentista a giovedì", "ho già pagato la bolletta", "come organizzo domani?"),
   può creare, modificare, completare ed eliminare note e dare consigli sulla giornata.
   Senza chiave o senza rete torna automaticamente all'assistente base.
+- **Meteo** 🌤️: in cima alle note il tempo attuale e le previsioni a 7 giorni
+  (posizione GPS o città cercata a mano). Accanto a ogni impegno dei prossimi giorni compare il
+  meteo previsto per quell'ora, con la probabilità di pioggia. Puoi chiedere all'assistente
+  "che tempo fa domani?" o "mi serve l'ombrello venerdì?"; il meteo entra anche nel riepilogo
+  della giornata e Claude lo usa per i suoi consigli. Dati da [Open-Meteo](https://open-meteo.com)
+  (gratuito, senza chiave), aggiornati ogni 30 minuti e disponibili anche offline.
 - **Riepilogo della giornata** ☀️: al primo avvio di ogni giorno compare una scheda con
   saluto, impegni di oggi, promemoria scaduti, anteprima di domani e note senza data.
   Con 🔊 *Ascolta* te lo legge a voce; lo richiami quando vuoi con ☀️ in alto o dal chip
@@ -58,6 +64,7 @@ poi "Aggiungi a schermata Home".
 | `js/agent.js` | Assistente base (a regole, funziona offline) |
 | `js/claude.js` | Assistente Claude: chiamate all'API Anthropic e strumenti sulle note |
 | `js/dateparser.js` | Riconosce date e orari scritti in italiano |
+| `js/weather.js` | Meteo: località, previsioni Open-Meteo, testi e consigli |
 | `js/voice.js` | Dettatura, registrazione audio, sintesi vocale |
 | `js/db.js` | Salvataggio locale (IndexedDB) |
 | `sw.js`, `manifest.webmanifest` | Installazione come app e funzionamento offline |

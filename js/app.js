@@ -3,9 +3,10 @@ import { parseWhen } from './dateparser.js';
 import { ask, dailyBriefing, formatWhen, toSpeech } from './agent.js';
 import { canRecord, canTranscribe, listen, speak } from './voice.js';
 import * as claude from './claude.js';
+import * as meteo from './weather.js';
 
 const $ = (sel) => document.querySelector(sel);
-const state = { notes: [], filter: 'upcoming', draftAudio: null, session: null };
+const state = { notes: [], filter: 'upcoming', draftAudio: null, session: null, forecast: null };
 
 // ---------- Utilità ----------
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
@@ -95,6 +96,14 @@ function groupLabel(note) {
   return d.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' }).replace(/^./, (c) => c.toUpperCase());
 }
 
+function weatherBadge(note) {
+  if (note.done) return '';
+  const w = meteo.forNote(state.forecast, note);
+  if (!w) return '';
+  const rain = w.rain >= 30 ? ` 💧${w.rain}%` : '';
+  return ` <span class="note-weather" title="${w.label}">${w.icon} ${w.temp}°${rain}</span>`;
+}
+
 function renderNotes() {
   const list = $('#note-list');
   const notes = filteredNotes();
@@ -125,7 +134,7 @@ function renderNotes() {
         <input type="checkbox" class="note-done" ${n.done ? 'checked' : ''} aria-label="Segna come fatta">
         <div class="note-body">
           <p class="note-title">${escapeHtml(n.title)}</p>
-          <p class="note-when muted small">${n.due ? '🕒 ' + formatWhen(n) : 'Senza data'}</p>
+          <p class="note-when muted small">${n.due ? '🕒 ' + formatWhen(n) : 'Senza data'}${weatherBadge(n)}</p>
           ${n.text && n.text !== n.title ? `<p class="note-text muted small">“${escapeHtml(n.text)}”</p>` : ''}
         </div>
         <div class="note-actions">
@@ -299,7 +308,7 @@ async function handleQuestion(question) {
   if (claude.isEnabled()) {
     const typing = addMessage('Claude sta pensando…', 'bot typing');
     try {
-      reply = await claude.askClaude(question, () => state.notes, claudeActions);
+      reply = await claude.askClaude(question, () => state.notes, claudeActions, () => state.forecast);
       typing.remove();
     } catch (err) {
       console.error(err);
@@ -309,7 +318,7 @@ async function handleQuestion(question) {
   }
 
   if (!reply) {
-    const local = ask(question, state.notes);
+    const local = ask(question, state.notes, new Date(), state.forecast);
     if (local.action?.type === 'create') await createNote(local.action.note);
     reply = local.reply;
   }
@@ -404,13 +413,13 @@ let briefingBusy = false;
 async function generateBriefing() {
   if (claude.isEnabled()) {
     try {
-      return await claude.askClaude(claude.BRIEFING_PROMPT, () => state.notes, claudeActions);
+      return await claude.askClaude(claude.BRIEFING_PROMPT, () => state.notes, claudeActions, () => state.forecast);
     } catch (err) {
       console.error(err);
-      return `${await claude.describeError(err)}\n\n${dailyBriefing(state.notes)}`;
+      return `${await claude.describeError(err)}\n\n${dailyBriefing(state.notes, new Date(), state.forecast)}`;
     }
   }
-  return dailyBriefing(state.notes);
+  return dailyBriefing(state.notes, new Date(), state.forecast);
 }
 
 async function showBriefing({ speakIt = false } = {}) {
@@ -469,6 +478,108 @@ $('#briefing-chip').addEventListener('click', async () => {
     briefingBusy = false;
   }
 });
+
+// ---------- Meteo ----------
+function showWeatherSetup(show) {
+  $('#weather-setup').classList.toggle('hidden', !show);
+  $('#weather-main').classList.toggle('hidden', show);
+  $('#weather-cancel').classList.toggle('hidden', !meteo.getLocation());
+  $('#weather-results').innerHTML = '';
+}
+
+function renderWeather() {
+  const f = state.forecast;
+  const location = meteo.getLocation();
+  showWeatherSetup(false);
+  $('#weather-place').textContent = `📍 ${location.name}`;
+  if (!f) {
+    $('#w-icon').textContent = '🌡️';
+    $('#w-temp').textContent = '—';
+    $('#w-label').textContent = 'Meteo non disponibile al momento';
+    $('#w-days').innerHTML = '';
+    $('#w-advice').classList.add('hidden');
+    return;
+  }
+  const now = meteo.describe(f.current.code, f.current.isDay);
+  const today = meteo.forDay(f, new Date());
+  $('#w-icon').textContent = now.icon;
+  $('#w-temp').innerHTML = `${f.current.temp}°${today ? ` <small>${today.max}° / ${today.min}°</small>` : ''}`;
+  $('#w-label').textContent = `${now.label[0].toUpperCase()}${now.label.slice(1)} · percepiti ${f.current.feels}°`;
+  const advice = meteo.adviceFor(today);
+  $('#w-advice').textContent = advice ? `💡 ${advice}` : '';
+  $('#w-advice').classList.toggle('hidden', !advice);
+  const todayKey = meteo.dayKey(new Date());
+  $('#w-days').innerHTML = f.daily.map((d) => {
+    const { icon, label } = meteo.describe(d.code);
+    const name = d.date === todayKey ? 'Oggi'
+      : new Date(`${d.date}T12:00`).toLocaleDateString('it-IT', { weekday: 'short' });
+    return `<div class="w-day ${d.date === todayKey ? 'today' : ''}" title="${label}">
+      <span>${name}</span><span class="w-day-icon">${icon}</span>
+      <span>${d.max}° <span class="muted">${d.min}°</span></span>
+      ${d.rain >= 30 ? `<span class="w-rain">💧${d.rain}%</span>` : ''}</div>`;
+  }).join('');
+}
+
+async function loadWeather({ force = false } = {}) {
+  if (!meteo.getLocation()) return showWeatherSetup(true);
+  try {
+    state.forecast = await meteo.getForecast({ force });
+  } catch (err) {
+    console.warn(err);
+  }
+  renderWeather();
+  renderNotes();
+}
+
+async function chooseLocation(location) {
+  meteo.setLocation(location);
+  state.forecast = null;
+  $('#weather-city').value = '';
+  await loadWeather({ force: true });
+}
+
+$('#weather-locate').addEventListener('click', async () => {
+  const btn = $('#weather-locate');
+  btn.disabled = true;
+  btn.textContent = '📍 Cerco la posizione…';
+  try {
+    await chooseLocation(await meteo.locateMe());
+  } catch (err) {
+    toast(`${err.message}. Prova a cercare la tua città.`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '📍 Usa la mia posizione';
+  }
+});
+
+$('#weather-search').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = $('#weather-city').value.trim();
+  if (!name) return;
+  const box = $('#weather-results');
+  box.innerHTML = '<p class="muted small">Cerco…</p>';
+  try {
+    const results = await meteo.searchCity(name);
+    if (!results.length) {
+      box.innerHTML = '<p class="muted small">Nessuna città trovata.</p>';
+      return;
+    }
+    box.innerHTML = '';
+    results.forEach((r) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.innerHTML = `<strong>${escapeHtml(r.name)}</strong> <span class="muted small">${escapeHtml(r.detail)}</span>`;
+      btn.addEventListener('click', () => chooseLocation(r));
+      box.appendChild(btn);
+    });
+  } catch (err) {
+    console.warn(err);
+    box.innerHTML = '<p class="muted small">Ricerca non riuscita: controlla la connessione.</p>';
+  }
+});
+
+$('#weather-place').addEventListener('click', () => showWeatherSetup(true));
+$('#weather-cancel').addEventListener('click', () => renderWeather());
 
 // ---------- Promemoria / notifiche ----------
 function checkReminders() {
@@ -534,9 +645,14 @@ async function init() {
 
   checkReminders();
   setInterval(checkReminders, 30000);
+  await loadWeather();
   maybeAutoBriefing();
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) { updateTodayLabel(); checkReminders(); renderNotes(); maybeAutoBriefing(); }
+  document.addEventListener('visibilitychange', async () => {
+    if (document.hidden) return;
+    updateTodayLabel();
+    checkReminders();
+    await loadWeather();
+    maybeAutoBriefing();
   });
 
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(console.warn);

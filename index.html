@@ -41,6 +41,32 @@
         </div>
       </div>
 
+      <div id="weather" class="card weather">
+        <div id="weather-setup" class="hidden">
+          <p class="weather-intro"><strong>🌤️ Aggiungi il meteo</strong><br>
+            <span class="muted small">Vedrai le previsioni e il tempo previsto per i tuoi impegni.</span></p>
+          <button id="weather-locate" class="btn primary">📍 Usa la mia posizione</button>
+          <form id="weather-search" class="search-row">
+            <input id="weather-city" type="text" placeholder="oppure cerca una città…" autocomplete="off">
+            <button type="submit" class="btn">Cerca</button>
+          </form>
+          <div id="weather-results" class="weather-results"></div>
+          <button id="weather-cancel" class="link small hidden">Annulla</button>
+        </div>
+        <div id="weather-main" class="hidden">
+          <div class="weather-now">
+            <span id="w-icon" class="w-icon"></span>
+            <div class="w-info">
+              <div id="w-temp" class="w-temp"></div>
+              <div id="w-label" class="muted small"></div>
+            </div>
+            <button id="weather-place" class="link small w-place" title="Cambia località"></button>
+          </div>
+          <p id="w-advice" class="w-advice small hidden"></p>
+          <div id="w-days" class="w-days"></div>
+        </div>
+      </div>
+
       <div class="card composer">
         <button id="rec-btn" class="mic" aria-label="Registra una nota vocale">
           <span class="mic-icon">🎙️</span>
@@ -113,6 +139,7 @@
         <button class="chip" data-ask="Cosa ho questa settimana?">Settimana</button>
         <button class="chip" data-ask="Prossimi impegni">Prossimi impegni</button>
         <button class="chip" data-ask="Cosa ho scaduto?">Scaduti</button>
+        <button class="chip" data-ask="Che tempo fa domani?">🌤️ Meteo</button>
         <button class="chip" id="briefing-chip">☀️ Riepilogo</button>
       </div>
       <form id="ask-form" class="ask-bar">

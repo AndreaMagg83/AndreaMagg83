@@ -3,6 +3,7 @@
 // mantenendo la stessa interfaccia ask(text, notes) → { reply, action? }.
 
 import { normalize, parseRange, parseWhen } from './dateparser.js';
+import * as meteo from './weather.js';
 
 const STOP_WORDS = new Set(('il lo la i gli le un uno una di a da in con su per tra fra e o ' +
   'che cosa quando dove come ho devo dovevo avevo mi ti si del della dei delle al alla ai alle ' +
@@ -33,7 +34,7 @@ export function toSpeech(text) {
   return text.replace(/•/g, '').replace(/—/g, ',').replace(/\n+/g, '. ');
 }
 
-export function ask(text, notes, now = new Date()) {
+export function ask(text, notes, now = new Date(), forecast = null) {
   const t = normalize(text).trim();
   const pending = notes
     .filter((n) => !n.done)
@@ -69,6 +70,11 @@ export function ask(text, notes, now = new Date()) {
       reply: when ? `Fatto! Ti ricorderò "${title}" ${when}.` : `Ho annotato "${title}" (senza data).`,
       action: { type: 'create', note: { text: body, title, due: date ? date.toISOString() : null, hasTime } },
     };
+  }
+
+  // Meteo
+  if (/\b(meteo|che tempo|tempo fa|piov\w*|pioggia|ombrello|temperatur\w*|gradi|caldo|freddo|nev[ei]\w*|sole|soleggiato)\b/.test(t)) {
+    return { reply: weatherReply(text, forecast, now) };
   }
 
   // Note scadute / arretrate
@@ -122,6 +128,21 @@ export function ask(text, notes, now = new Date()) {
   };
 }
 
+function weatherReply(text, forecast, now) {
+  if (!forecast) return 'Non ho ancora le previsioni: imposta la tua città nella scheda meteo in alto nelle Note.';
+  const range = parseRange(text, now);
+  const day = range ? new Date(range.from) : now;
+  const forecastDay = meteo.forDay(forecast, day);
+  if (!forecastDay) return 'Ho le previsioni solo per i prossimi 7 giorni.';
+  const isToday = meteo.dayKey(day) === meteo.dayKey(now);
+  const label = isToday ? 'Oggi' : capitalize(range.label);
+  let reply = `${label} a ${forecast.location.name}: ${meteo.dayText(forecastDay)}.`;
+  if (isToday) reply += ` Adesso ${meteo.currentText(forecast)}.`;
+  let advice = meteo.adviceFor(forecastDay);
+  if (!advice && /\b(piov\w*|pioggia|ombrello)\b/.test(normalize(text))) advice = 'Non dovrebbe piovere, niente ombrello.';
+  return advice ? `${reply} ${advice}` : reply;
+}
+
 function sameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -133,7 +154,7 @@ function capitalize(s) {
 }
 
 // Riepilogo della giornata senza Claude: saluto, impegni di oggi, arretrati e anteprima di domani.
-export function dailyBriefing(notes, now = new Date()) {
+export function dailyBriefing(notes, now = new Date(), forecast = null) {
   const today = startOfToday(now);
   const tomorrow = new Date(today.getTime() + 864e5);
   const dayAfter = new Date(today.getTime() + 2 * 864e5);
@@ -150,6 +171,10 @@ export function dailyBriefing(notes, now = new Date()) {
   const greeting = h < 12 ? 'Buongiorno!' : h < 18 ? 'Buon pomeriggio!' : 'Buonasera!';
   const dateLabel = now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
   const parts = [`${greeting} Oggi è ${dateLabel}.`];
+  const todayWeather = meteo.forDay(forecast, now);
+  if (todayWeather) {
+    parts.push(`Meteo a ${forecast.location.name}: ${meteo.dayText(todayWeather)}. ${meteo.adviceFor(todayWeather)}`.trim());
+  }
 
   if (todays.length) {
     parts.push(listNotes(todays, `Oggi hai ${todays.length} promemoria:`));

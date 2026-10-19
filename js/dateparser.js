@@ -126,7 +126,7 @@ export function parseWhen(text, now = new Date()) {
   }
 
   if (!time && partOfDay) time = { h: PART_HOURS[partOfDay], m: 0 };
-  if (!day && !time) return { date: null, hasTime: false, rest: text.trim() };
+  if (!day && !time) return { date: null, hasTime: false, rest: cleanup(text, []) };
 
   if (!day) {
     // Solo orario: oggi, oppure domani se l'ora è già passata

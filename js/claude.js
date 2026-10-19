@@ -2,6 +2,7 @@
 // con la chiave API personale dell'utente, salvata solo su questo dispositivo.
 
 import { formatWhen } from './agent.js';
+import * as meteo from './weather.js';
 
 // SDK ufficiale Anthropic da CDN (con un secondo CDN di riserva)
 const SDK_URLS = [
@@ -25,7 +26,10 @@ Ad ogni messaggio ricevi la data e l'ora attuali e l'elenco aggiornato delle not
 - Se l'utente chiede di ricordare, aggiungere, spostare, completare o cancellare qualcosa,
   usa gli strumenti a disposizione, poi conferma in una frase cosa hai fatto.
 - Per cancellare più note, o se non è chiaro a quale nota si riferisce, chiedi conferma prima.
-- Puoi dare consigli pratici (organizzare la giornata, priorità, cosa preparare), restando concreto.`;
+- Puoi dare consigli pratici (organizzare la giornata, priorità, cosa preparare), restando concreto.
+- Se disponibili, ricevi anche le previsioni meteo dei prossimi 7 giorni e il meteo previsto per ogni
+  nota con data: usale per rispondere sul tempo e per consigli utili (ombrello, anticipare un'uscita),
+  senza nominare il meteo quando non serve.`;
 
 const DATE_DESC = 'Data e ora locali nel formato "YYYY-MM-DDTHH:MM", oppure solo "YYYY-MM-DD" ' +
   'se non c\'è un orario. null se senza data.';
@@ -124,18 +128,25 @@ function toLocalString(note) {
   return note.hasTime ? `${day}T${pad(d.getHours())}:${pad(d.getMinutes())}` : day;
 }
 
-function agendaSnapshot(notes) {
+function agendaSnapshot(notes, forecast) {
   const now = new Date();
+  const weatherOf = (n) => {
+    const w = meteo.forNote(forecast, n);
+    return w ? `${w.label}, ${w.temp}°C${w.rain >= 30 ? `, pioggia ${w.rain}%` : ''}` : undefined;
+  };
   const lines = notes.map((n) => JSON.stringify({
     id: n.id,
     titolo: n.title,
     testo_dettato: n.text !== n.title ? n.text : undefined,
     quando: n.due ? `${toLocalString(n)} (${formatWhen(n)})` : null,
     completata: n.done,
+    meteo_previsto: n.done ? undefined : weatherOf(n),
   }));
+  const weather = meteo.forecastSummary(forecast);
   return `[Contesto automatico — ora attuale: ${now.toLocaleString('it-IT', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  })}]\n[Note in agenda (${notes.length}):]\n${lines.join('\n') || '(nessuna nota)'}`;
+  })}]\n${weather ? `[Previsioni meteo:]\n${weather}\n` : '[Meteo non configurato]\n'}` +
+    `[Note in agenda (${notes.length}):]\n${lines.join('\n') || '(nessuna nota)'}`;
 }
 
 async function runTool(block, actions) {
@@ -173,18 +184,18 @@ async function runTool(block, actions) {
 }
 
 /**
- * Invia una domanda a Claude. `getNotes()` restituisce le note aggiornate,
+ * Invia una domanda a Claude. `getNotes()` restituisce le note aggiornate, `getForecast()` le previsioni (o null),
  * `actions` = { create(note), update(id, changes), remove(id) }.
  * Restituisce il testo della risposta.
  */
-export async function askClaude(question, getNotes, actions) {
+export async function askClaude(question, getNotes, actions, getForecast = () => null) {
   const anthropic = await getClient();
   if (history.length > MAX_HISTORY) history = [];
 
   history.push({
     role: 'user',
     content: [
-      { type: 'text', text: agendaSnapshot(getNotes()) },
+      { type: 'text', text: agendaSnapshot(getNotes(), getForecast()) },
       { type: 'text', text: question },
     ],
   });
@@ -230,7 +241,7 @@ export async function askClaude(question, getNotes, actions) {
 
 export const BRIEFING_PROMPT = 'Fammi il riepilogo della mia giornata, come un assistente personale che mi parla ' +
   'al mattino: un saluto, gli impegni di oggi in ordine di orario, eventuali promemoria scaduti da recuperare, ' +
-  'un\'anticipazione di domani e uno o due consigli pratici sulle priorità. Al massimo 8 frasi brevi, ' +
+  'il meteo se disponibile, un\'anticipazione di domani e uno o due consigli pratici sulle priorità. Al massimo 8 frasi brevi, ' +
   'senza modificare nessuna nota.';
 
 /** Verifica la chiave senza costi (legge solo le informazioni sul modello). */
