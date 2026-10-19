@@ -226,6 +226,18 @@ async function toggleRecording() {
   try {
     state.session = await listen({
       keepAudio: $('#keep-audio').checked,
+      onError: (error) => {
+        if (error === 'audio-capture' && $('#keep-audio').checked) {
+          // Il microfono è già occupato dalla registrazione: succede su molti Android
+          $('#keep-audio').checked = false;
+          settings.set('keep-audio', '0');
+          toast('Su questo telefono non si può dettare e registrare insieme: ho disattivato "Salva anche l\'audio". Riprova.', 7000);
+        } else if (error === 'not-allowed' || error === 'service-not-allowed') {
+          toast('Microfono non autorizzato: consentilo nelle impostazioni del browser.', 6000);
+        } else if (error === 'network') {
+          toast('La dettatura richiede la connessione a internet.', 5000);
+        }
+      },
       onText: (text) => updateDraft(text),
     });
   } catch (err) {
@@ -236,6 +248,10 @@ async function toggleRecording() {
 }
 
 $('#rec-btn').addEventListener('click', toggleRecording);
+// Su Android dettatura e registrazione insieme spesso si bloccano: di base solo dettatura
+const isAndroid = /Android/i.test(navigator.userAgent);
+$('#keep-audio').checked = (settings.get('keep-audio') ?? (isAndroid ? '0' : '1')) === '1';
+$('#keep-audio').addEventListener('change', (e) => settings.set('keep-audio', e.target.checked ? '1' : '0'));
 $('#type-btn').addEventListener('click', () => { resetDraft(); showDraft(''); $('#draft-text').focus(); });
 $('#draft-text').addEventListener('input', (e) => {
   // Aggiorna la data riconosciuta mentre si scrive, se l'utente non l'ha toccata a mano

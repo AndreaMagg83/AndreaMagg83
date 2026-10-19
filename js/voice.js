@@ -9,7 +9,7 @@ export const canRecord = Boolean(navigator.mediaDevices?.getUserMedia && window.
  * mentre l'utente parla. Restituisce { stop() } che risolve con l'eventuale
  * registrazione audio (Blob) se keepAudio è true.
  */
-export async function listen({ onText, onEnd, keepAudio = false }) {
+export async function listen({ onText, onEnd, onError, keepAudio = false }) {
   let finalText = '';
   let recognition = null;
   let recorder = null;
@@ -42,7 +42,9 @@ export async function listen({ onText, onEnd, keepAudio = false }) {
       onText?.((finalText + interim).trim(), !interim);
     };
     recognition.onerror = (e) => {
-      if (e.error !== 'no-speech' && e.error !== 'aborted') console.warn('Riconoscimento vocale:', e.error);
+      if (e.error === 'no-speech' || e.error === 'aborted') return;
+      console.warn('Riconoscimento vocale:', e.error);
+      onError?.(e.error);
     };
     recognition.onend = () => onEnd?.();
     recognition.start();
